@@ -1,0 +1,11 @@
+# CASSANDRA - dark "terminal" theme
+[theme]
+base = "dark"
+primaryColor = "#e63946"          # alert red (verdict accents, buttons)
+backgroundColor = "#0e1117"       # near-black
+secondaryBackgroundColor = "#161b22"  # panels / sidebar
+textColor = "#e6edf3"
+font = "monospace"
+
+[server]
+headless = true

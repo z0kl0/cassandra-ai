@@ -1,0 +1,16 @@
+# CASSANDRA — OPTIONAL voice "Interrogation Mode" (stretch goal)
+# Install when building the voice layer:  pip install -r requirements-voice.txt
+#
+# Design: push-to-talk (record -> transcribe -> respond -> speak), gated behind
+# ENABLE_VOICE in .env. TTS is fully LOCAL via Piper (not Edge-TTS, which is a
+# network call to Microsoft's online endpoint).
+
+# --- Speech-to-text (local, CTranslate2 — fast on CPU) ---
+faster-whisper>=1.0
+
+# --- Text-to-speech (local, open-source) ---
+piper-tts>=1.2
+
+# --- Audio capture widget for Streamlit (push-to-talk) ---
+# Note: st.audio_input (Streamlit >=1.31) also works with no extra dep.
+streamlit-audiorecorder>=0.0.5

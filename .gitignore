@@ -1,0 +1,26 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Virtual environment ---
+.venv/
+venv/
+
+# --- Secrets / config (NEVER commit your real .env) ---
+.env
+
+# --- Local caches & generated data (keep the curated fraud_cases.csv) ---
+data/sec_cache/
+data/chroma/
+data/_*
+
+# Ignore folder
+ignore/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

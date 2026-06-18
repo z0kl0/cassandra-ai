@@ -1,0 +1,31 @@
+# CASSANDRA — core (local-first) dependencies
+# Python 3.10+ recommended. Install with:  pip install -r requirements.txt
+#
+# Voice "Interrogation Mode" is an optional stretch feature — see requirements-voice.txt.
+
+# --- Web UI ---
+streamlit>=1.36
+plotly>=5.22
+
+# --- LLM orchestration (local Ollama) ---
+langchain>=0.2
+langchain-community>=0.2
+langchain-ollama>=0.1
+ollama>=0.3
+
+# --- RAG / vector store (embedded, local) ---
+chromadb>=0.5
+sentence-transformers>=3.0
+
+# --- Forensic engine (deterministic math) ---
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13            # Benford chi-square / MAD conformity tests
+
+# --- SEC EDGAR access + config ---
+requests>=2.32
+python-dotenv>=1.0
+
+# --- Dev / quality (CI) ---
+pytest>=8.0
+flake8>=7.0
