@@ -15,9 +15,20 @@ venv/
 data/sec_cache/
 data/chroma/
 data/_*
+# saved demo debates (remove the next line to make pre-baked demos portable)
+data/demo_cache/
+# synthesized debate-narration WAV clips (regenerated from the Piper voices)
+data/audio_cache/
+
+# --- Piper TTS voice models (downloaded separately; large) ---
+voices/
 
 # Ignore folder
 ignore/
+docs/workflow_short.mmd
+docs/workflow.mmd
+venv_start.ps1
+proposal_CASSANDRA.md
 
 # --- OS / editor ---
 .DS_Store

@@ -9,7 +9,7 @@
 
 ## 1. Problem Statement
 
-Major accounting frauds and corporate failures — **Enron, WorldCom, Wirecard, Luckin Coffee** —
+Major accounting frauds and corporate failures — **Enron, WorldCom, Sunbeam, Lehman Brothers** —
 were detectable in companies' own public financial statements *years* before they collapsed.
 Forensic accountants catch these cases using a well-established toolkit of quantitative red-flag
 models, but applying that toolkit is slow, manual, and locked inside specialist expertise. Most
@@ -31,10 +31,11 @@ As an **optional stretch feature**, CASSANDRA includes an **"Interrogation Mode"
 - **Demonstrates the right use of LLMs.** It draws a clean line between *deterministic quantitative
   analysis* (code) and *language generation* (LLM) — the architecture pattern that separates
   serious AI applications from "ask the chatbot to guess."
-- **Unforgettable, defensible demo.** Running it live on **Luckin Coffee** (a real, XBRL-available
-  SEC filer that was caught fabricating revenue) and watching the red flags fire — then on a healthy
-  blue-chip where they stay calm — is dramatic *and* backed by a real precision/recall evaluation,
-  not anecdote. Pre-XBRL classics (Enron, WorldCom) are demoed from a small curated dataset.
+- **Unforgettable, defensible demo.** Running it on a known fraud — **Sunbeam**, where the same
+  company flips 🔴 on its *as-reported* books and 🟢 on its *restated* books — and watching the red
+  flags fire, then on a healthy blue-chip (MSFT/AAPL/GOOGL) where they stay calm, is dramatic *and*
+  backed by a real precision/recall evaluation, not anecdote. Historical frauds (Enron, WorldCom,
+  Sunbeam, Lehman) are demoed from a small curated dataset; healthy controls run live from SEC XBRL.
 - **Cinematic stretch.** With voice enabled, you can physically *listen* to the Forensic Skeptic
   and the Bull agent debate the stock before the CIO agent rules — an unusual level of
   interactivity for financial analysis.
@@ -66,9 +67,9 @@ inference) — the only network call is to the free SEC EDGAR API.**
 
 ## 4. Expected Output & User Interaction
 
-**User input:** a stock ticker (e.g., `LUCKIN`, `NKLA`, `MSFT`) typed into the Streamlit UI — or,
-with the optional voice layer enabled, spoken via push-to-talk (e.g., *"Cassandra, analyze Luckin
-Coffee."*).
+**User input:** a stock ticker (e.g., `MSFT`, `AAPL`, `GOOGL`) or a curated case (e.g., `SUNBEAM`)
+selected in the Streamlit UI — or, with the optional voice layer enabled, spoken via push-to-talk
+(e.g., *"Cassandra, analyze Microsoft."*).
 
 **Processing:** ticker → CIK lookup → SEC XBRL fundamentals → deterministic forensic engine →
 LangChain + Ollama memo generation (with RAG over historical fraud cases).
@@ -104,11 +105,14 @@ limitations. This proves the tool works rather than asserting it.
   optional agent debate; a curated backtest.
 - **Primary risk:** XBRL tag inconsistency across filers/years — mitigated with a tag-mapping layer
   with fallbacks and a curated set of demo tickers.
-- **Data-availability note:** SEC XBRL (`companyfacts`) only goes back to ~2009. Pre-XBRL cases
-  (Enron 2001, WorldCom 2002) are served from a small curated CSV. **Wirecard was a Frankfurt-listed
-  filer, not an SEC domestic filer**, so it is not in EDGAR XBRL and is used as a CSV/narrative
-  example only. The primary *live* in-XBRL demo is **Luckin Coffee** (NASDAQ ADR), with **Nikola
-  (NKLA)** as a second post-2009 case.
+- **Data-availability note:** SEC XBRL (`companyfacts`) only goes back to ~2009, so pre-XBRL frauds
+  (Enron, WorldCom, Sunbeam, Lehman) are served from a small curated CSV transcribed from primary
+  filings; healthy controls (MSFT/AAPL/GOOGL/…) run live from XBRL. *Luckin Coffee and Wirecard were
+  evaluated and dropped as quantitative cases:* Luckin's fraud year was never filed as an audited
+  annual report (only restated figures exist), and Wirecard is a foreign (Frankfurt/IFRS) filer not
+  in EDGAR whose fraud was fabricated **cash** — which makes a company look *healthier*, a documented
+  blind spot of the Beneish/Altman models (as is pre-revenue **Nikola**). These limitations are
+  reported honestly in the evaluation rather than papered over.
 - **Compliance:** prominent "educational analysis, not investment advice" disclaimer; SEC API used
   with a proper `User-Agent` and within rate limits.
 

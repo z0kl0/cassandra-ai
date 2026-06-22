@@ -26,6 +26,12 @@ scipy>=1.13            # Benford chi-square / MAD conformity tests
 requests>=2.32
 python-dotenv>=1.0
 
+# --- Live bull-case research (free, no API key) ---
+ddgs>=9.0             # DuckDuckGo search for Michael's forward-looking news context
+
+# --- Conversational name->ticker resolution ---
+rapidfuzz>=3.0        # fast fuzzy matching of company names to SEC tickers (difflib fallback)
+
 # --- Dev / quality (CI) ---
 pytest>=8.0
 flake8>=7.0

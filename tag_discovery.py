@@ -2,8 +2,8 @@
 Dev-time XBRL tag-discovery aid.
 
 The forensic engine is only as good as its `tag_map`: when a filer reports a concept under a tag
-the map doesn't know (e.g. Alphabet folding finance-lease ROU assets into PP&E in FY2025, or
-Luckin's cost line), the value silently reads as 0 and can corrupt a score. This tool surfaces
+the map doesn't know (e.g. Alphabet folding finance-lease ROU assets into PP&E in FY2025, or a
+filer splitting out its cost line), the value silently reads as 0 and can corrupt a score. This tool surfaces
 those gaps for a given company-year so a human can extend `tag_map` deliberately:
 
   1. MISSING concepts the engine wanted but couldn't resolve this year.

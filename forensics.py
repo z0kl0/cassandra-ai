@@ -21,7 +21,7 @@ class ForensicEngine:
 
     # Annual report forms whose fp=="FY" point carries the full-year figure. Includes
     # foreign private issuers (20-F) and Canadian filers (40-F), not just domestic 10-K,
-    # so the engine works on SEC-listed ADRs such as Luckin Coffee. Amendments (/A) are
+    # so the engine works on SEC-listed foreign issuers / ADRs. Amendments (/A) are
     # included so restatements are picked up (most-recently-filed wins); use `as_of_date`
     # to get the original as-filed figure for point-in-time backtests.
     ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
@@ -85,7 +85,7 @@ class ForensicEngine:
         # required base, the rest are added when present. Used only as a fallback, so direct
         # tags always win. (See _derive_value.)
         self.derivations = {
-            # Many filers (Alphabet, Luckin, ...) report G&A and Selling&Marketing separately
+            # Many filers (e.g. Alphabet) report G&A and Selling&Marketing separately
             # instead of a combined SG&A line.
             "SGA": [
                 ["GeneralAndAdministrativeExpense"],
@@ -188,33 +188,53 @@ class ForensicEngine:
                 return value, f"{tag} [{unit}] end={period_end} filed={filed}"
         return None, None
 
-    def _get_value_for_year(self, facts: dict, concept: str, year: int, as_of_date: str = None):
+    def _detect_currency(self, facts: dict) -> str:
+        """
+        The filing's primary reporting currency (ISO code), from the units of a few core monetary
+        tags. Prefers USD when present (most filers); else the first foreign currency (e.g. Sony's
+        JPY). Defaults to 'USD'. Forensic scores are ratios, so any single currency works — this
+        just tells the resolver which unit to read consistently, and labels the figures.
+        """
+        ug = facts.get("facts", {}).get("us-gaap", {})
+        for tag in ("Assets", "Liabilities", "StockholdersEquity",
+                    "RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"):
+            units = (ug.get(tag) or {}).get("units", {})
+            if "USD" in units:
+                return "USD"
+            for u in units:
+                if len(u) == 3 and u.isalpha():
+                    return u.upper()
+        return "USD"
+
+    def _get_value_for_year(self, facts: dict, concept: str, year: int, as_of_date: str = None,
+                            currency: str = "USD"):
         """
         Resolves a single concept to its annual value for `year` via its `tag_map` candidates,
-        preferring the expected unit (USD for money, shares for share counts).
+        preferring the expected unit (the reporting `currency` for money, shares for share counts).
         `as_of_date` is forwarded to enable point-in-time resolution.
         """
         instant = concept in self.INSTANT_CONCEPTS
-        preferred_unit = "shares" if concept in self.SHARE_CONCEPTS else "USD"
+        preferred_unit = "shares" if concept in self.SHARE_CONCEPTS else currency
         return self._resolve_tags(facts, self.tag_map[concept], year, instant, preferred_unit, as_of_date)
 
-    def _derive_value(self, facts: dict, concept: str, year: int, as_of_date: str = None):
+    def _derive_value(self, facts: dict, concept: str, year: int, as_of_date: str = None,
+                      currency: str = "USD"):
         """
         Computes a concept as a SUM of component tag-groups when its direct tags are absent
         (e.g. SG&A = G&A + Selling&Marketing for split-reporters; EBIT = NetIncome + tax +
         interest). Each component is a candidate-tag list resolved like a normal concept. The
         FIRST component group is required (the base); the rest are added when present. Returns
-        (value, provenance) or (None, None). All components treated as USD flows.
+        (value, provenance) or (None, None). All components are monetary flows in `currency`.
         """
         spec = self.derivations.get(concept)
         if not spec:
             return None, None
-        base_val, base_prov = self._resolve_tags(facts, spec[0], year, instant=False, as_of_date=as_of_date)
+        base_val, base_prov = self._resolve_tags(facts, spec[0], year, False, currency, as_of_date)
         if base_val is None:
             return None, None
         total, parts = base_val, [base_prov.split(" [")[0]]
         for comp in spec[1:]:
-            val, prov = self._resolve_tags(facts, comp, year, instant=False, as_of_date=as_of_date)
+            val, prov = self._resolve_tags(facts, comp, year, False, currency, as_of_date)
             if val is not None:
                 total += val
                 parts.append(prov.split(" [")[0])
@@ -238,8 +258,11 @@ class ForensicEngine:
         financials = {}
         provenance = {}
         found = 0
+        # Read every monetary concept in the filing's own reporting currency (USD, JPY, EUR, ...).
+        # Scores are ratios, so the currency cancels — this only keeps figures internally consistent.
+        currency = self._detect_currency(facts)
         for concept in self.tag_map:
-            value, source = self._get_value_for_year(facts, concept, year, as_of_date)
+            value, source = self._get_value_for_year(facts, concept, year, as_of_date, currency)
             if value is None:
                 financials[concept] = 0.0
                 provenance[concept] = None
@@ -253,7 +276,7 @@ class ForensicEngine:
         # Direct tags always take priority -- this only fills genuine gaps.
         for concept in self.derivations:
             if provenance.get(concept) is None:
-                value, source = self._derive_value(facts, concept, year, as_of_date)
+                value, source = self._derive_value(facts, concept, year, as_of_date, currency)
                 if value is not None:
                     financials[concept] = value
                     provenance[concept] = source
@@ -265,6 +288,7 @@ class ForensicEngine:
 
         financials["_provenance"] = provenance
         financials["_coverage"] = round(found / len(self.tag_map), 3)
+        financials["_currency"] = currency
         return financials
 
     @staticmethod
@@ -526,20 +550,22 @@ class ForensicEngine:
             logger.error(f"Error calculating Sloan Ratio: {e}")
             return {"Sloan_Ratio": None, "Status": "Error"}
 
-    def calculate_benford_deviation(self, facts: dict, year: int) -> dict:
+    def calculate_benford_deviation(self, facts: dict, year: int, currency: str = None) -> dict:
         """
         Applies Benford's Law to the first digits of all non-zero numerical facts reported for a given year.
         Calculates Mean Absolute Deviation (MAD). MAD > 0.015 typically indicates nonconformity.
+        Benford is scale-invariant, so it runs on the filing's reporting currency (auto-detected).
         """
         us_gaap = facts.get("facts", {}).get("us-gaap", {})
         first_digits = []
-        
+        cur = currency or self._detect_currency(facts)
+
         # Benford's Law applies to magnitudes of naturally-occurring monetary amounts. Restrict
-        # to USD values only -- including per-share ratios (USD/shares), share counts, durations
-        # or "pure" ratios pollutes the distribution and produces false nonconformity on clean
-        # filers. Match annual figures (period end in the year) and skip values < 1.
+        # to the reporting-currency values only -- including per-share ratios, share counts,
+        # durations or "pure" ratios pollutes the distribution and produces false nonconformity on
+        # clean filers. Match annual figures (period end in the year) and skip values < 1.
         for tag, data in us_gaap.items():
-            pts = data.get("units", {}).get("USD")
+            pts = data.get("units", {}).get(cur)
             if not pts:
                 continue
             for dp in pts:

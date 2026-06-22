@@ -6,7 +6,7 @@ while tuning against real blue-chips, so they can't silently drift.
      vs advisory-only. These encode the deliberate choices that keep MSFT/AAPL/GOOGL clean and
      NVDA at Watch while real frauds stay High Risk.
   2. Extraction hardening (synthetic SEC facts): the PP&E finance-lease tag and the SG&A
-     derivation that fixed Alphabet/Luckin.
+     derivation that fixed Alphabet's split SG&A reporting.
   3. Live blue-chip smoke test (network, opt-in via `pytest --run-live`): the real "blue-chips
      stay calm" guarantee against current SEC data.
 """
@@ -181,3 +181,207 @@ def test_bluechip_stays_calm_live(eng, ticker):
     assert v["Emoji"] != "RED", f"{ticker} unexpectedly RED: {v['Flags']}"
     assert mscore["Is_Manipulator"] is not True, f"{ticker} flagged manipulator: {mscore}"
     assert cur["_coverage"] >= 0.85, f"{ticker} low coverage {cur['_coverage']}"
+
+
+# ---- 4. Michael's scaling conviction (_bull_posture) ---------------------------------
+# Lives in llm.py, which imports langchain_ollama; skip cleanly in the lean CI image where
+# that isn't installed. The logic is pure (no Ollama call), so it runs anywhere with the deps.
+try:
+    from llm import ForensicMemoWriter
+    _HAS_LLM = True
+except Exception:
+    _HAS_LLM = False
+
+pytestmark_llm = pytest.mark.skipif(not _HAS_LLM, reason="llm deps (langchain_ollama) not installed")
+
+
+def _posture(eng, **overrides):
+    base = {"m_score": m(), "z_score": z(), "sloan": sloan(),
+            "piotroski": piotroski(), "leverage": lev(), "benford": benford()}
+    base.update(overrides)
+    verdict = eng.calculate_verdict(**base)
+    return ForensicMemoWriter._bull_posture(verdict, base)  # (label, directive, temperature)
+
+
+@pytestmark_llm
+def test_posture_clean_is_confident(eng):
+    label, _, temp = _posture(eng)
+    assert label == "confident" and temp == 0.5
+
+
+@pytestmark_llm
+def test_posture_watch_is_confident(eng):
+    # One moderate signal -> YELLOW Watch -> Michael still confident.
+    assert _posture(eng, sloan=sloan(high=True))[0] == "confident"
+
+
+@pytestmark_llm
+def test_posture_red_single_flag_is_cautious(eng):
+    # High-confidence distress alone -> RED with one flag -> cautious.
+    assert _posture(eng, z_score=z("Distress"))[0] == "cautious"
+
+
+@pytestmark_llm
+def test_posture_manipulator_concedes(eng):
+    label, _, temp = _posture(eng, m_score=m(manip=True))
+    assert label == "concede" and temp == 0.2
+
+
+@pytestmark_llm
+def test_posture_two_flags_concede(eng):
+    # Distress (strong) + high accruals (moderate) = two flags -> concede.
+    assert _posture(eng, z_score=z("Distress"), sloan=sloan(high=True))[0] == "concede"
+
+
+@pytestmark_llm
+def test_posture_low_confidence_manipulator_does_not_concede(eng):
+    # A low-confidence manipulation flag is only a Watch (verdict downgrades it), so Michael
+    # must NOT be forced into outright concession on a weak signal.
+    assert _posture(eng, m_score=m(manip=True, conf="Low"))[0] != "concede"
+
+
+@pytestmark_llm
+def test_posture_insufficient_data(eng):
+    assert ForensicMemoWriter._bull_posture(eng.calculate_verdict(), {})[0] == "data-limited"
+
+
+# ---- 5. Cassandra's scaling skepticism (_skeptic_posture) ----------------------------
+# Symmetric to Michael: she must NOT manufacture a bear case when the numbers are clean.
+
+def _sk_posture(eng, **overrides):
+    base = {"m_score": m(), "z_score": z(), "sloan": sloan(),
+            "piotroski": piotroski(), "leverage": lev(), "benford": benford()}
+    base.update(overrides)
+    verdict = eng.calculate_verdict(**base)
+    return ForensicMemoWriter._skeptic_posture(verdict, base)  # (label, directive, temperature)
+
+
+@pytestmark_llm
+def test_skeptic_clean_stands_down(eng):
+    # Clean GREEN, no flags -> Cassandra stands down (no manufactured bear case).
+    label, directive, _ = _sk_posture(eng)
+    assert label == "stand-down"
+    assert "no material objection" in directive.lower()
+
+
+@pytestmark_llm
+def test_skeptic_watch_is_measured(eng):
+    # One moderate signal -> YELLOW Watch -> measured, not full prosecution.
+    assert _sk_posture(eng, sloan=sloan(high=True))[0] == "measured"
+
+
+@pytestmark_llm
+def test_skeptic_red_single_flag_prosecutes(eng):
+    assert _sk_posture(eng, z_score=z("Distress"))[0] == "prosecute"
+
+
+@pytestmark_llm
+def test_skeptic_manipulator_prosecutes(eng):
+    assert _sk_posture(eng, m_score=m(manip=True))[0] == "prosecute"
+
+
+@pytestmark_llm
+def test_skeptic_insufficient_data(eng):
+    assert ForensicMemoWriter._skeptic_posture(eng.calculate_verdict(), {})[0] == "data-limited"
+
+
+# ---- 6. Grounded model glossary + concise/deep answer cap ----------------------------
+# Guards the interrogation Q&A: definitions must be ground truth (no invented formulas), and the
+# answer length must adapt to whether the user asked for depth.
+
+@pytestmark_llm
+def test_glossary_has_correct_beneish_formula():
+    from llm import MODEL_GLOSSARY
+    # The real Beneish constants/indices — guards against regressing to a hallucinated formula.
+    for token in ("-4.84", "DSRI", "TATA", "LVGI", "-2.22"):
+        assert token in MODEL_GLOSSARY
+
+
+@pytestmark_llm
+def test_glossary_has_altman_zones():
+    from llm import MODEL_GLOSSARY
+    for token in ("1.81", "2.99", "Sloan", "Benford", "Piotroski"):
+        assert token in MODEL_GLOSSARY
+
+
+@pytestmark_llm
+def test_answer_cap_scales_with_depth_request():
+    plain = ForensicMemoWriter._answer_cap("what is the M-Score?")
+    deep = ForensicMemoWriter._answer_cap("give me the full formula and explain it in detail")
+    assert deep > plain and plain <= 250
+
+
+@pytestmark_llm
+def test_yes_after_offer_counts_as_depth():
+    # The exact loop the user hit: "yes" to an offer must trigger the full answer, not another summary.
+    offered = [("user", "what is the Altman Z?"),
+               ("assistant", "It gauges distress.\nWant the full formula, or how it applied to this company?")]
+    assert ForensicMemoWriter._wants_depth("yes", offered) is True
+    assert ForensicMemoWriter._wants_depth("yes please", offered) is True
+    # A bare "yes" with no preceding offer is NOT a depth request.
+    assert ForensicMemoWriter._wants_depth("yes", [("assistant", "NVDA looks clean.")]) is False
+    # An affirmation embedded in a real question still falls through to normal handling.
+    assert ForensicMemoWriter._wants_depth("what is it?", offered) is False
+
+
+@pytestmark_llm
+def test_topic_model_locks_to_same_model_across_turns():
+    # "give me the formula" with no model named must stay on Altman (the thread's model), not drift.
+    hist = [("user", "explain the Altman Z-Score"),
+            ("assistant", "The Altman Z-Score for NVDA is 6.568, in the Safe zone.")]
+    assert ForensicMemoWriter._topic_model("yes give me the full formula", hist) == "Altman Z-Score"
+    # A freshly named model in the current question wins over history.
+    assert ForensicMemoWriter._topic_model("what about the M-Score?", hist) == "Beneish M-Score"
+    assert ForensicMemoWriter._topic_model("hello", None) is None
+
+
+# ---- 7. Proportionate host-confirm framing (no presumed "fraud" for healthy companies) ----
+# The confirm directive must scale with the verdict tone: clean/watch must forbid the "fraud"/
+# alarming framing; only high-risk earns serious language.
+
+@pytestmark_llm
+def test_confirm_tone_clean_forbids_fraud_language():
+    d = ForensicMemoWriter._CONFIRM_TONE["clean"]
+    assert "CLEAN" in d and "fraud" in d.lower()  # it explicitly forbids the word 'fraud'
+    assert "do not" in d.lower()
+
+
+@pytestmark_llm
+def test_confirm_tone_watch_is_calm():
+    d = ForensicMemoWriter._CONFIRM_TONE["watch"]
+    assert "MINOR" in d and ("calm" in d.lower() or "measured" in d.lower())
+
+
+@pytestmark_llm
+def test_confirm_tone_high_risk_is_serious():
+    d = ForensicMemoWriter._CONFIRM_TONE["high-risk"]
+    assert "SERIOUS" in d and "red flag" in d.lower()
+
+
+# ---- 8. Mic-safe name handling (per-utterance only; never invented or carried over) ----
+
+@pytestmark_llm
+@pytest.mark.parametrize("utterance,expected", [
+    ("Hi, my name is Franz, analyze Apple", "Franz"),
+    ("I'm Sarah, can you look at Ford?", "Sarah"),
+    ("call me Mike", "Mike"),
+    ("my name is franz", "Franz"),            # lowercase typed intro still works
+    ("analyze Tesla", None),                  # no name -> none (was inventing "John")
+    ("I'm looking at Tesla", None),           # stopword guard
+    ("I'm interested in Nvidia", None),
+    ("what can you do?", None),
+])
+def test_extract_name(utterance, expected):
+    assert ForensicMemoWriter._extract_name(utterance) == expected
+
+
+@pytestmark_llm
+def test_name_directive_forbids_invention_when_absent():
+    d = ForensicMemoWriter._name_directive("analyze Tesla")
+    assert "do not address" in d.lower() and "invent" in d.lower()
+    assert "Franz" not in ForensicMemoWriter._name_directive("analyze Tesla")
+
+
+@pytestmark_llm
+def test_name_directive_uses_current_name():
+    assert "Franz" in ForensicMemoWriter._name_directive("hi I'm Franz, analyze Apple")

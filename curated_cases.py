@@ -12,10 +12,8 @@ class CuratedCaseLoader:
     ForensicEngine.extract_financials output).
 
     The CSV exists because the SEC XBRL companyfacts API cannot serve every case:
-      * Pre-XBRL classics (Enron, WorldCom, Sunbeam) predate mandatory XBRL (~2009).
-      * Foreign filers not in EDGAR XBRL (Wirecard — a Frankfurt issuer).
-      * Frauds whose fabricated figures were never filed as audited XBRL at all
-        (Luckin's 2019 numbers lived in interim press releases until restated).
+    pre-XBRL classics (Enron, WorldCom, Sunbeam, Lehman) predate mandatory XBRL (~2009),
+    so their figures aren't in companyfacts and must be curated from the original filings.
 
     Each row is one company-fiscal-year. The figures must be transcribed from primary
     sources (10-K/annual report, SEC AAER/litigation release) and cited in `source_url`;

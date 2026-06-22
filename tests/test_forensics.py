@@ -212,6 +212,50 @@ def test_resolver_prefers_usd_unit(eng):
     assert val == 222
 
 
+def _two_year_facts(currency):
+    """Synthetic two-year us-gaap filing in a given reporting currency (instant + flow tags)."""
+    rows = [  # (tag, current, prior, instant)
+        ("Assets", 1500, 1000, True), ("AssetsCurrent", 600, 300, True),
+        ("LiabilitiesCurrent", 300, 200, True), ("Liabilities", 700, 500, True),
+        ("LongTermDebtNoncurrent", 400, 300, True), ("AccountsReceivableNetCurrent", 350, 100, True),
+        ("PropertyPlantAndEquipmentNet", 450, 400, True), ("RetainedEarningsAccumulatedDeficit", 100, 50, True),
+        ("StockholdersEquity", 800, 500, True),
+        ("RevenueFromContractWithCustomerExcludingAssessedTax", 1500, 1000, False),
+        ("CostOfGoodsAndServicesSold", 800, 500, False), ("NetIncomeLoss", 250, 100, False),
+        ("NetCashProvidedByUsedInOperatingActivities", 50, 120, False), ("OperatingIncomeLoss", 280, 130, False),
+        ("DepreciationDepletionAndAmortization", 60, 50, False), ("SellingGeneralAndAdministrativeExpense", 200, 150, False),
+    ]
+    ug = {}
+    for tag, cv, pv, instant in rows:
+        def pt(v, y, _i=instant):
+            base = {"end": f"{y}-12-31", "val": v, "fy": y, "fp": "FY", "form": "10-K", "filed": f"{y + 1}-02-15"}
+            if not _i:
+                base["start"] = f"{y}-01-01"
+            return base
+        ug[tag] = {"units": {currency: [pt(pv, 2022), pt(cv, 2023)]}}
+    return {"facts": {"us-gaap": ug}}
+
+
+def test_detect_currency(eng):
+    assert eng._detect_currency(_two_year_facts("JPY")) == "JPY"
+    assert eng._detect_currency(_two_year_facts("USD")) == "USD"
+    assert eng._detect_currency({"facts": {"us-gaap": {}}}) == "USD"  # default
+
+
+def test_currency_invariance_usd_equals_jpy(eng):
+    """The scores are ratios -> identical regardless of reporting currency (no FX conversion needed)."""
+    scores = {}
+    for fx in ("USD", "JPY"):
+        facts = _two_year_facts(fx)
+        cur, pri = eng.extract_financials(facts, 2023), eng.extract_financials(facts, 2022)
+        assert cur["_currency"] == fx and cur["_coverage"] >= 0.7
+        scores[fx] = (eng.calculate_m_score(cur, pri)["M_Score"],
+                      eng.calculate_z_score(cur)["Z_Score"],
+                      eng.calculate_leverage(cur, pri)["Equity_Multiplier"],
+                      eng.calculate_sloan_ratio(cur, pri)["Sloan_Ratio"])
+    assert scores["USD"] == scores["JPY"]
+
+
 def test_extract_financials_tracks_missing_as_low_confidence(eng):
     """Sparse facts -> low coverage, None provenance, and Low-confidence scores (not silent zeros)."""
     facts = _facts("Assets", "USD", [

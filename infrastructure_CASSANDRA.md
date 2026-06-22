@@ -1,15 +1,15 @@
 # CASSANDRA: Infrastructure & Deployment Layout
 
 This document describes the **local-first** infrastructure for CASSANDRA. The entire application
-runs as a single-machine monolith on the local i9 workstation. A distributed cloud deployment is
-documented as an **optional stretch** in the appendix — to be attempted *only after* the local app
-works end-to-end.
+runs as a single-machine monolith on the local i9 workstation — there is no cloud/distributed tier;
+local is the design, not a fallback.
 
 > **Why local-first:** the i9-10900K does CPU-only inference (no usable GPU), so an 8B model runs
-> at ~5–10 tok/s. Every remote service (remote vector DB, API proxy droplet) adds latency and a
-> network failure point to a live demo that is graded on *"runs end-to-end without errors."* A
-> local monolith removes those failure modes and the resource contention. The only network call in
-> the core app is to the free SEC EDGAR API.
+> at ~5–10 tok/s. Every remote service adds latency and a network failure point to a live demo that
+> is graded on *"runs end-to-end without errors."* A local monolith removes those failure modes and
+> the resource contention. The only network call in the core app is to the free SEC EDGAR API.
+> (When presenting from another computer, the local app is simply viewed over the LAN/Tailscale —
+> still the same single local process, no hosted services.)
 >
 > **Storage Policy:** To preserve space on the system (C:) drive, all LLM weights are stored in
 > `D:\LLM\.ollama\models`. This is controlled via the `OLLAMA_MODELS` environment variable.
@@ -59,7 +59,7 @@ voice.py            # optional, gated by ENABLE_VOICE
 data/
   chroma/           # embedded vector store
   sec_cache/        # cached companyfacts JSON
-  fraud_cases.csv   # curated pre-XBRL cases (Enron, WorldCom, Wirecard)
+  fraud_cases.csv   # curated pre-XBRL cases (Enron, WorldCom, Sunbeam, Lehman)
 tests/
   test_forensics.py # math validated against textbook values
 ```
@@ -83,7 +83,7 @@ These make the project read as a serious engineering portfolio piece without add
   LOG_LEVEL=INFO
   ENABLE_VOICE=false
   ```
-  (Note: no `CHROMADB_HOST` — the vector store is embedded and local.)
+  (The vector store is embedded and file-based — there is no separate DB host to configure.)
   ### Change OLLAMA_KEEP_ALIVE=-1 to 5 or 10 min when not in demo
 
 ### B. Source control & CI (GitHub)
@@ -95,7 +95,7 @@ These make the project read as a serious engineering portfolio piece without add
 
 ### C. Logging
 * Use the stdlib `logging` module (not `print`), level from `LOG_LEVEL`. Example:
-  `[2026-06-15 14:32:01] [INFO] [sec_client] Fetched CIK 0001767582 (LUCKIN), 14 yrs of facts`.
+  `[2026-06-15 14:32:01] [INFO] [sec_client] Fetched CIK 0000789019 (MSFT), 16 yrs of facts`.
 
 ---
 
@@ -116,30 +116,8 @@ memo.
 **Week 4 — Debate.** Multi-persona Bull/Skeptic/CIO debate on one model (≤2 rounds, token-capped,
 streamed).
 
-**Week 5 — Evaluate + document.** Backtest table (precision/recall on Luckin/Nikola + curated CSV
-cases); "educational, not investment advice" disclaimer; README, screenshots, workflow diagram.
+**Week 5 — Evaluate + document.** Backtest table (precision/recall on curated classics —
+Sunbeam/Enron/WorldCom/Lehman — plus live blue-chip controls); "educational, not investment
+advice" disclaimer; README, screenshots, workflow diagram.
 
-**Week 6 — Stretch.** Voice layer (Piper + faster-whisper, push-to-talk, behind `ENABLE_VOICE`)
-and/or the cloud deployment in the appendix.
-
----
-
-## Appendix — Optional: Cloud Deployment (Stretch, post-core)
-
-> Attempt this **only after** the local app is complete and demoable. Its purpose is a portfolio
-> flourish — a Dockerized, always-on hosted version recruiters can try — *not* a dependency of the
-> capstone demo. Keep the local monolith as the graded artifact.
-
-If pursued, containerize and split across the available VPS droplets:
-
-* **Droplet 1 — data/vector layer (Docker):** a **ChromaDB server** (so the hosted web app can
-  share a vector store) + a scheduled `companyfacts` cache-warmer for a curated universe of
-  tickers. Mind SEC rate limits from a single IP.
-* **Droplet 2 — app/API layer (Docker):** a **FastAPI** service exposing the forensic engine +
-  memo generation, with the Streamlit (or a web) frontend in front of it; optionally a dedicated
-  backtest runner.
-* **Containerization:** `Dockerfile` per service + `docker-compose.yml`. Showing containerized
-  pipelines demonstrates production-deployment understanding.
-* **Config:** the same `.env` keys, but with `CHROMADB_HOST`/`CHROMADB_PORT` pointing at Droplet 1
-  and the LLM either kept local or hosted on a GPU instance (CPU droplets are too slow for 8B
-  inference — this is the main reason inference stays on the local machine).
+**Week 6 — Stretch.** Voice layer (Piper + faster-whisper, push-to-talk, behind `ENABLE_VOICE`).
